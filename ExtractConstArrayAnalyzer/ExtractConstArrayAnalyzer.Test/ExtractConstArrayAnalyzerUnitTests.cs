@@ -108,6 +108,33 @@ namespace ExtractConstArrayAnalyzer.Test
         }
 
         [TestMethod]
+        public void TemporaryCreation_ConstantStringParameters_noDiagnostic()
+        {
+            var test = @"
+    using System;
+
+    namespace ConsoleApplication1
+    {
+        class TypeName
+        {   
+            void Test() => string.Format("""", new object[]{"""", null});
+        }
+    }";
+            var expected = new DiagnosticResult
+            {
+                Id = "ExtractConstArrayAnalyzer",
+                Message = String.Format("Constant array creation '{0}' can be hoisted", "new object[]{\"\", null}"),
+                Severity = DiagnosticSeverity.Warning,
+                Locations =
+                    new[] {
+                            new DiagnosticResultLocation("Test0.cs", 8, 46)
+                        }
+            };
+
+            VerifyCSharpDiagnostic(test, expected);
+        }
+
+        [TestMethod]
         public void TemporaryCreation_SingleFix()
         {
             var test = @"using System;
