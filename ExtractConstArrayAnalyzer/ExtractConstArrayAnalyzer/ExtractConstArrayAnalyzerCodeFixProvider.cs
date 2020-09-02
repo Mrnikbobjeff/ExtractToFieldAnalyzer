@@ -43,6 +43,9 @@ namespace ExtractConstArrayAnalyzer
             // Find the type declaration identified by the diagnostic.
             var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<ArgumentSyntax>().First();
 
+            var isInterface = declaration.FirstAncestorOrSelf<SyntaxNode>(x => x is StructDeclarationSyntax || x is ClassDeclarationSyntax) == declaration;
+            if (isInterface)
+                return;
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
                 CodeAction.Create(
@@ -84,7 +87,9 @@ namespace ExtractConstArrayAnalyzer
             var newArgListSyntax = SyntaxFactory.ArgumentList(invocationParameterReplacement);
             var newDeclaration = paramsInvocation.WithArgumentList(newArgListSyntax);
 
-            var classOrStruct = typeDecl.FirstAncestorOrSelf<SyntaxNode>(x => x is StructDeclarationSyntax || x is ClassDeclarationSyntax || x is InterfaceDeclarationSyntax);
+            var classOrStruct = typeDecl.FirstAncestorOrSelf<SyntaxNode>(x => x is StructDeclarationSyntax || x is ClassDeclarationSyntax);
+            if(classOrStruct == typeDecl)
+                context.
             var documentEditor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
             documentEditor.InsertMembers(classOrStruct, 0, new[] { assignmentExpression });
             documentEditor.ReplaceNode(paramsInvocation, newDeclaration);
