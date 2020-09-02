@@ -50,35 +50,33 @@ namespace ExtractConstArrayAnalyzer
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: title,
-                    createChangedSolution: c => MakeUppercaseAsync(context.Document, declaration, c),
+                    createChangedSolution: c => ExtractConstArray(context.Document, declaration, c),
                     equivalenceKey: title),
                 diagnostic);
         }
 
-        private async Task<Solution> MakeUppercaseAsync(Document document, ArgumentSyntax typeDecl, CancellationToken cancellationToken)
+        void Test(ExpressionSyntax expressionSyntax)
+        {
+            var  x = new SeparatedSyntaxList<ArgumentSyntax>().AddRange((expressionSyntax as ArrayCreationExpressionSyntax).Initializer.Expressions.Select(SyntaxFactory.Argument));
+        }
+
+        private async Task<Solution> ExtractConstArray(Document document, ArgumentSyntax typeDecl, CancellationToken cancellationToken)
         {
             var originalSolution = document.Project.Solution;
             var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
             var paramsInvocation = typeDecl.FirstAncestorOrSelf<SyntaxNode>(x => x is InvocationExpressionSyntax) as InvocationExpressionSyntax;
             var method = semanticModel.GetSymbolInfo(paramsInvocation).Symbol as IMethodSymbol;
-            var editor = await DocumentEditor.CreateAsync(document, cancellationToken);
-            var bracketedSyntax = SyntaxFactory.BracketedArgumentList();
-            var updatedParameters = new SeparatedSyntaxList<ExpressionSyntax>();
-            var actualArguments = paramsInvocation.ArgumentList.Arguments.Skip(method.Parameters.Length - 1).Select(x => x.Expression).ToArray();
-            updatedParameters = updatedParameters.AddRange(actualArguments);
-            var newArray = SyntaxFactory.InitializerExpression(SyntaxKind.ArrayInitializerExpression, updatedParameters);
             var typeDisplayString = method.Parameters.Last().Type.ToMinimalDisplayString(semanticModel, method.Parameters.Last().Locations.First().SourceSpan.Start);
 
             var typeSyntax = SyntaxFactory.ParseTypeName(typeDisplayString);
-            var objectCreationExpression = SyntaxFactory.ObjectCreationExpression(typeSyntax, null, newArray).WithAdditionalAnnotations(Formatter.Annotation);
-            var equalsValueClause = SyntaxFactory.EqualsValueClause(objectCreationExpression);
+            var equalsValueClause = SyntaxFactory.EqualsValueClause(typeDecl.Expression);
             var declarator = new SeparatedSyntaxList<VariableDeclaratorSyntax>();
             declarator = declarator.Add(SyntaxFactory.VariableDeclarator(SyntaxFactory.Identifier("hoisted"), null, equalsValueClause));
             var variableAssignment = SyntaxFactory.VariableDeclaration(typeSyntax, declarator).WithAdditionalAnnotations(Formatter.Annotation);
             var assignmentExpression = SyntaxFactory.FieldDeclaration(
                 new SyntaxList<AttributeListSyntax>(),
-                new SyntaxTokenList().Add(SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)).Add(SyntaxFactory.Token(SyntaxKind.StaticKeyword)),
-                variableAssignment);
+                new SyntaxTokenList().Add(SyntaxFactory.Token(SyntaxKind.StaticKeyword)).Add(SyntaxFactory.Token( SyntaxKind.ReadOnlyKeyword)),
+                variableAssignment).WithAdditionalAnnotations(Formatter.Annotation);
 
             var invocationParameterReplacement = new SeparatedSyntaxList<ArgumentSyntax>();
             invocationParameterReplacement = invocationParameterReplacement.AddRange(paramsInvocation.ArgumentList.Arguments.TakeWhile(x => x != typeDecl));
@@ -88,16 +86,14 @@ namespace ExtractConstArrayAnalyzer
             var newDeclaration = paramsInvocation.WithArgumentList(newArgListSyntax);
 
             var classOrStruct = typeDecl.FirstAncestorOrSelf<SyntaxNode>(x => x is StructDeclarationSyntax || x is ClassDeclarationSyntax);
-            if(classOrStruct == typeDecl)
-                context.
             var documentEditor = await DocumentEditor.CreateAsync(document, cancellationToken).ConfigureAwait(false);
             documentEditor.InsertMembers(classOrStruct, 0, new[] { assignmentExpression });
             documentEditor.ReplaceNode(paramsInvocation, newDeclaration);
 
             var newDocument = documentEditor.GetChangedDocument();
             var finalRoot = await newDocument.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-            finalRoot = Formatter.Format(finalRoot, Formatter.Annotation, document.Project.Solution.Workspace);
-            return originalSolution.WithDocumentSyntaxRoot(document.Id, finalRoot);
+            finalRoot = Formatter.Format(finalRoot, Formatter.Annotation, document.Project.Solution.Workspace, cancellationToken:cancellationToken).NormalizeWhitespace();
+            return originalSolution.WithDocumentText(document.Id, finalRoot.GetText());
         }
     }
 }

@@ -110,28 +110,26 @@ namespace ExtractConstArrayAnalyzer.Test
         [TestMethod]
         public void TemporaryCreation_SingleFix()
         {
-            var test = @"
-    using System;
-
+            var test = @"using System;
+    
     namespace ConsoleApplication1
     {
         class TypeName
-        {   
+        {
             void Test() => string.Format("""", new object[]{1});
         }
     }";
 
-            var fixtest = @"
-    using System;
+            var fixtest = @"using System;
 
-    namespace ConsoleApplication1
+namespace ConsoleApplication1
+{
+    class TypeName
     {
-        class TypeName
-        {   
-            static readonly object[] hoisted = new object[]{1};
-            void Test() => string.Format("""", hoisted);
-        }
-    }";
+        static readonly object[] hoisted = new object[]{1};
+        void Test() => string.Format("""", hoisted);
+    }
+}";
             VerifyCSharpFix(test, fixtest);
         }
 
